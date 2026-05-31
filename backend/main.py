@@ -24,7 +24,8 @@ app.add_middleware(
 )
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 
@@ -191,14 +192,32 @@ async def call_gemini(resume_text: str, job_title: str) -> dict[str, Any]:
     prompt = build_prompt(resume_text, job_title)
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4096},
+        "generationConfig": {
+            "temperature": 1,          # required for gemini-2.5-flash thinking
+            "maxOutputTokens": 8192,   # enough room for thinking + JSON output
+        },
     }
-    async with httpx.AsyncClient(timeout=90.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(f"{GEMINI_URL}?key={GEMINI_API_KEY}", json=payload)
+        if response.status_code != 200:
+            logger.error("Gemini HTTP %s: %s", response.status_code, response.text[:500])
         response.raise_for_status()
         data = response.json()
 
-    raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
+    # gemini-2.5-flash may return thinking parts before the JSON part
+    # find the part that contains JSON (starts with { or ```)
+    parts = data["candidates"][0]["content"].get("parts", [])
+    raw_text = ""
+    for part in parts:
+        text = part.get("text", "")
+        stripped = text.strip()
+        if stripped.startswith("{") or stripped.startswith("```"):
+            raw_text = text
+            break
+    if not raw_text and parts:
+        raw_text = parts[-1].get("text", "")
+
+    logger.info("Gemini raw response length: %d chars", len(raw_text))
     cleaned = clean_gemini_json(raw_text)
     return json.loads(cleaned)
 
