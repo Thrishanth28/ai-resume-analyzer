@@ -429,9 +429,13 @@ function LoadingOverlay() {
 function UploadSection({
   onResult,
   onToast,
+  onAnalysisStart,
+  onAnalysisError,
 }: {
   onResult: (r: AnalysisResult) => void;
   onToast: (msg: string, type: "success" | "error" | "info") => void;
+  onAnalysisStart: () => void;
+  onAnalysisError: () => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [jobTitle, setJobTitle] = useState("");
@@ -487,6 +491,7 @@ function UploadSection({
     if (!file) return;
     setAnalyzing(true);
     setError("");
+    onAnalysisStart(); // clears old result immediately in parent
     try {
       const form = new FormData();
       form.append("file", file);
@@ -495,6 +500,7 @@ function UploadSection({
       const res = await fetch(`${API_URL}/analyze`, {
         method: "POST",
         body: form,
+        cache: "no-store", // never use cached response
       });
 
       if (!res.ok) {
@@ -504,16 +510,17 @@ function UploadSection({
 
       const result = (await res.json()) as AnalysisResult;
       onResult(result);
-      onToast("Analysis complete!", "success");
+      onToast(`Analysis complete! ATS Score: ${result.ats_score}/100`, "success");
     } catch (err: unknown) {
       const msg =
         err instanceof TypeError
-          ? "Cannot reach the backend server. It may be waking up — try again in 30 seconds."
+          ? "Cannot reach the backend. It may be waking up — please try again in 30 seconds."
           : err instanceof Error
           ? err.message
           : "An unexpected error occurred.";
       setError(msg);
       onToast(msg, "error");
+      onAnalysisError(); // restore parent state
     } finally {
       setAnalyzing(false);
     }
@@ -1156,6 +1163,9 @@ const HOW_IT_WORKS = [
 
 export default function Home() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  // resultKey forces Results + ScoreCircle to fully remount on every new analysis
+  const [resultKey, setResultKey] = useState(0);
+  const [analyzing, setAnalyzing] = useState(false);
   const [toast, setToast] = useState<{
     msg: string;
     type: "success" | "error" | "info";
@@ -1169,15 +1179,28 @@ export default function Home() {
     []
   );
 
+  // Called when user clicks Analyze — clears old result immediately
+  const handleAnalysisStart = useCallback(() => {
+    setResult(null);
+    setAnalyzing(true);
+  }, []);
+
   const handleResult = useCallback((r: AnalysisResult) => {
+    setAnalyzing(false);
     setResult(r);
+    setResultKey((k) => k + 1); // force full remount of Results + ScoreCircle
     setTimeout(() => {
       resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 100);
+    }, 120);
+  }, []);
+
+  const handleError = useCallback(() => {
+    setAnalyzing(false);
   }, []);
 
   const handleReset = useCallback(() => {
     setResult(null);
+    setResultKey((k) => k + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
@@ -1209,7 +1232,7 @@ export default function Home() {
             </span>
           </div>
           <div style={{ display: "flex", gap: "1.5rem", fontSize: "0.82rem", color: "var(--muted)" }}>
-            <span className="hide-mobile">Powered by Gemini 1.5 Flash</span>
+            <span className="hide-mobile">Powered by Gemini 2.5 Flash</span>
             <a
               href="https://github.com/Thrishanth28/ai-resume-analyzer"
               target="_blank"
@@ -1321,10 +1344,24 @@ export default function Home() {
             className="glass"
             style={{ padding: "2rem", textAlign: "left", marginBottom: "2rem" }}
           >
-            <UploadSection onResult={handleResult} onToast={showToast} />
+            <UploadSection
+              onResult={handleResult}
+              onToast={showToast}
+              onAnalysisStart={handleAnalysisStart}
+              onAnalysisError={handleError}
+            />
           </div>
         </div>
       </div>
+
+      {/* ── Loading (full page, between hero and results) ── */}
+      {analyzing && !result && (
+        <div style={{ maxWidth: 600, margin: "0 auto", padding: "2rem 1.5rem" }}>
+          <div className="glass" style={{ padding: "2rem" }}>
+            <LoadingOverlay />
+          </div>
+        </div>
+      )}
 
       {/* ── Results ── */}
       {result && (
@@ -1336,7 +1373,8 @@ export default function Home() {
             padding: "0 1.5rem 4rem",
           }}
         >
-          <Results result={result} onReset={handleReset} onToast={showToast} />
+          {/* key={resultKey} forces full remount → score re-animates, tab resets */}
+          <Results key={resultKey} result={result} onReset={handleReset} onToast={showToast} />
         </div>
       )}
 
