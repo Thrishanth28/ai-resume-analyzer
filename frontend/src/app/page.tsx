@@ -41,17 +41,24 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Returns real hex so it can be used in JS template literals like `${c}33`
 function scoreColor(score: number) {
-  if (score >= 80) return "var(--green)";
-  if (score >= 60) return "var(--yellow)";
-  return "var(--red)";
+  if (score >= 80) return "#22c55e";
+  if (score >= 60) return "#f59e0b";
+  return "#ef4444";
 }
 
 function verdictColor(verdict: string) {
-  if (verdict === "Highly Recommended") return "var(--green)";
-  if (verdict === "Recommended") return "var(--blue)";
-  if (verdict === "Needs Improvement") return "var(--yellow)";
-  return "var(--red)";
+  if (verdict === "Highly Recommended") return "#22c55e";
+  if (verdict === "Recommended") return "#3b82f6";
+  if (verdict === "Needs Improvement") return "#f59e0b";
+  return "#ef4444";
+}
+
+function toastColor(type: "success" | "error" | "info") {
+  if (type === "success") return "#22c55e";
+  if (type === "error") return "#ef4444";
+  return "#6366f1";
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -70,14 +77,8 @@ function Toast({
     return () => clearTimeout(t);
   }, [onClose]);
 
-  const icon =
-    type === "success" ? "✓" : type === "error" ? "✕" : "ℹ";
-  const color =
-    type === "success"
-      ? "var(--green)"
-      : type === "error"
-      ? "var(--red)"
-      : "var(--accent)";
+  const icon = type === "success" ? "✓" : type === "error" ? "✕" : "ℹ";
+  const color = toastColor(type);
 
   return (
     <div className="toast">
@@ -224,7 +225,7 @@ function ProgressBar({
   const [w, setW] = useState(0);
   const pct = Math.round((value / max) * 100);
   const color =
-    pct >= 75 ? "var(--green)" : pct >= 50 ? "var(--yellow)" : "var(--red)";
+    pct >= 75 ? "#22c55e" : pct >= 50 ? "#f59e0b" : "#ef4444";
 
   useEffect(() => {
     const t = setTimeout(() => setW(pct), 120 + delay);
@@ -756,8 +757,8 @@ function Results({
             </span>
             <span
               style={{
-                border: `1px solid ${vColor}44`,
-                background: `${vColor}14`,
+                border: `1px solid ${vColor}55`,
+                background: `${vColor}18`,
                 color: vColor,
                 borderRadius: 8,
                 padding: "0.25rem 0.8rem",
