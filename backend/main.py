@@ -1,22 +1,24 @@
 import os
 import json
 import time
+import logging
 import fitz  # PyMuPDF
 import httpx
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Any
+from typing import Any, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-app = FastAPI(title="AI Resume Analyzer API", version="1.0.0")
+app = FastAPI(title="AI Resume Analyzer API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -25,56 +27,78 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
-GEMINI_PROMPT = """You are an expert ATS (Applicant Tracking System) resume analyzer with deep knowledge of how Workday, Taleo, Greenhouse and Lever parse and score resumes.
 
-Analyze the resume text provided and return a JSON response with EXACTLY this structure — no extra text, no markdown, just valid JSON:
+def build_prompt(resume_text: str, job_title: str) -> str:
+    role_context = f"The candidate is targeting the role: {job_title}." if job_title else "Analyze for general professional roles."
+    return f"""You are a world-class ATS (Applicant Tracking System) resume expert with deep knowledge of how Workday, Taleo, Greenhouse, Lever, and iCIMS parse, rank, and score resumes. You also have expertise as a senior hiring manager and career coach.
 
-{
-  "ats_score": <number 0-100>,
-  "grade": "<A+|A|B+|B|C+|C|D|F>",
-  "summary": "<2-3 sentence overall assessment>",
-  "sections_found": {
-    "contact": <true/false>,
-    "summary": <true/false>,
-    "experience": <true/false>,
-    "education": <true/false>,
-    "skills": <true/false>,
-    "certifications": <true/false>
-  },
-  "category_scores": {
-    "keywords": <0-20>,
-    "formatting": <0-20>,
-    "experience": <0-20>,
-    "skills": <0-20>,
-    "education": <0-20>
-  },
+{role_context}
+
+Analyze the resume text below and return ONLY a valid JSON object — no markdown, no code fences, no explanations. The JSON must follow this EXACT schema:
+
+{{
+  "ats_score": <integer 0-100 based on ATS compatibility, keyword density, formatting, and completeness>,
+  "grade": "<one of: A+|A|B+|B|C+|C|D|F>",
+  "summary": "<2-3 sentence honest overall assessment of ATS readiness>",
+  "sections_found": {{
+    "contact": <true if name/email/phone found>,
+    "summary": <true if professional summary/objective found>,
+    "experience": <true if work experience section found>,
+    "education": <true if education section found>,
+    "skills": <true if skills section found>,
+    "certifications": <true if certifications/licenses found>
+  }},
+  "category_scores": {{
+    "keywords": <0-20, how well resume matches industry keywords>,
+    "formatting": <0-20, ATS-friendly formatting score>,
+    "experience": <0-20, quality and quantification of experience>,
+    "skills": <0-20, relevance and completeness of skills>,
+    "education": <0-20, education section quality>
+  }},
   "strengths": [
-    "<specific strength 1>",
+    "<specific, actionable strength with evidence from the resume>",
     "<specific strength 2>",
-    "<specific strength 3>"
+    "<specific strength 3>",
+    "<specific strength 4>"
   ],
   "critical_issues": [
-    {
-      "issue": "<issue title>",
+    {{
+      "issue": "<short issue title, max 6 words>",
       "impact": "<High|Medium|Low>",
-      "fix": "<exact actionable fix>"
-    }
+      "fix": "<specific actionable fix the candidate can apply immediately>"
+    }}
   ],
   "missing_keywords": [
-    "<keyword 1>",
+    "<industry keyword or tool missing from resume>",
     "<keyword 2>",
     "<keyword 3>",
     "<keyword 4>",
-    "<keyword 5>"
+    "<keyword 5>",
+    "<keyword 6>",
+    "<keyword 7>",
+    "<keyword 8>"
   ],
   "quick_wins": [
-    "<quick fix 1 — can do in 5 minutes>",
-    "<quick fix 2>",
-    "<quick fix 3>"
+    "<actionable improvement completable in under 10 minutes>",
+    "<quick win 2>",
+    "<quick win 3>",
+    "<quick win 4>",
+    "<quick win 5>"
   ],
-  "improved_summary": "<rewritten professional summary for this person based on their experience>",
-  "verdict": "<Highly Recommended|Recommended|Needs Improvement|Major Revision Required>"
-}"""
+  "improved_summary": "<professionally rewritten 3-4 sentence summary that is ATS-optimized, quantified, and compelling for the target role>",
+  "verdict": "<one of: Highly Recommended|Recommended|Needs Improvement|Major Revision Required>",
+  "interview_tips": [
+    "<specific interview tip based on their background>",
+    "<tip 2>",
+    "<tip 3>"
+  ],
+  "salary_insight": "<one sentence salary range insight for this profile based on their experience level>"
+}}
+
+Resume text to analyze:
+---
+{resume_text[:8000]}
+---"""
 
 
 class SectionsFound(BaseModel):
@@ -112,97 +136,76 @@ class AnalysisResult(BaseModel):
     quick_wins: list[str]
     improved_summary: str
     verdict: str
+    interview_tips: list[str]
+    salary_insight: str
     word_count: int
     processing_time_ms: int
     filename: str
     file_size_kb: float
+    job_title: str
 
 
-def get_fallback_analysis(filename: str, file_size_kb: float, word_count: int, processing_time_ms: int) -> dict[str, Any]:
+def get_fallback_analysis(
+    filename: str, file_size_kb: float, word_count: int,
+    processing_time_ms: int, job_title: str
+) -> dict[str, Any]:
     return {
         "ats_score": 65,
         "grade": "C+",
-        "summary": "Demo mode: Gemini API is not configured. This is a sample analysis. Your resume was successfully parsed and contains readable content. Configure GEMINI_API_KEY for real AI analysis.",
-        "sections_found": {
-            "contact": True,
-            "summary": False,
-            "experience": True,
-            "education": True,
-            "skills": True,
-            "certifications": False,
-        },
-        "category_scores": {
-            "keywords": 12,
-            "formatting": 14,
-            "experience": 13,
-            "skills": 12,
-            "education": 14,
-        },
+        "summary": "Demo mode active — Gemini API key is not configured on this server. Your resume was successfully parsed. Add GEMINI_API_KEY to enable real AI-powered analysis.",
+        "sections_found": {"contact": True, "summary": False, "experience": True, "education": True, "skills": True, "certifications": False},
+        "category_scores": {"keywords": 12, "formatting": 14, "experience": 13, "skills": 12, "education": 14},
         "strengths": [
-            "Resume was successfully parsed — text is machine-readable",
-            "File size is within optimal range for ATS systems",
-            "PDF format is ATS-compatible",
+            "Resume is machine-readable — text parsed successfully",
+            "PDF format is compatible with major ATS systems",
+            "File size is within the optimal range",
         ],
-        "critical_issues": [
-            {
-                "issue": "Gemini API not configured",
-                "impact": "High",
-                "fix": "Set the GEMINI_API_KEY environment variable to enable real AI analysis.",
-            }
-        ],
+        "critical_issues": [{"issue": "API not configured", "impact": "High", "fix": "Set GEMINI_API_KEY environment variable on Render to enable real analysis."}],
         "missing_keywords": ["Python", "API", "Cloud", "Agile", "Docker"],
-        "quick_wins": [
-            "Add GEMINI_API_KEY to enable real analysis",
-            "Ensure contact section includes LinkedIn URL",
-            "Add a professional summary section at the top",
-        ],
-        "improved_summary": "Experienced professional with a strong background in their field. Demonstrated ability to deliver results and collaborate effectively. Seeking opportunities to leverage expertise and drive meaningful impact.",
+        "quick_wins": ["Configure Gemini API key", "Add a professional summary section", "Quantify achievements with numbers"],
+        "improved_summary": "Results-driven professional with demonstrated expertise in their field. Proven track record of delivering measurable outcomes and collaborating across teams. Seeking to leverage skills in a high-impact role.",
         "verdict": "Needs Improvement",
+        "interview_tips": ["Prepare STAR-format stories for behavioral questions", "Research the company's recent news before interviews"],
+        "salary_insight": "Enable real analysis to get salary insights tailored to your experience.",
         "word_count": word_count,
         "processing_time_ms": processing_time_ms,
         "filename": filename,
         "file_size_kb": file_size_kb,
+        "job_title": job_title,
     }
 
 
-async def call_gemini(resume_text: str) -> dict[str, Any]:
+def clean_gemini_json(raw: str) -> str:
+    text = raw.strip()
+    # Strip ```json ... ``` or ``` ... ```
+    if text.startswith("```"):
+        lines = text.split("\n")
+        lines = lines[1:]  # drop opening fence line
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text
+
+
+async def call_gemini(resume_text: str, job_title: str) -> dict[str, Any]:
+    prompt = build_prompt(resume_text, job_title)
     payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": GEMINI_PROMPT + "\n\nResume text:\n" + resume_text}
-                ]
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.1,
-            "maxOutputTokens": 2048,
-        },
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4096},
     }
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(
-            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
-            json=payload,
-        )
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        response = await client.post(f"{GEMINI_URL}?key={GEMINI_API_KEY}", json=payload)
         response.raise_for_status()
         data = response.json()
 
     raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-
-    # Strip markdown code fences if present
-    cleaned = raw_text.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("```", 2)[1]
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
-        cleaned = cleaned.rsplit("```", 1)[0].strip()
-
+    cleaned = clean_gemini_json(raw_text)
     return json.loads(cleaned)
 
 
 @app.get("/")
 async def root() -> dict[str, str]:
-    return {"name": "AI Resume Analyzer API", "version": "1.0.0", "status": "healthy"}
+    return {"name": "AI Resume Analyzer API", "version": "2.0.0", "status": "healthy"}
 
 
 @app.get("/health")
@@ -211,45 +214,64 @@ async def health() -> dict[str, Any]:
 
 
 @app.post("/analyze", response_model=AnalysisResult)
-async def analyze(file: UploadFile = File(...)) -> dict[str, Any]:
+async def analyze(
+    file: UploadFile = File(...),
+    job_title: Optional[str] = Form(default=""),
+) -> dict[str, Any]:
     start_time = time.time()
 
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
 
     content = await file.read()
-
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="File exceeds 5MB limit.")
+        raise HTTPException(status_code=400, detail="File size exceeds the 5MB limit.")
 
     file_size_kb = round(len(content) / 1024, 2)
+    job_title_clean = (job_title or "").strip()
 
     try:
         doc = fitz.open(stream=content, filetype="pdf")
-        resume_text = ""
-        for page in doc:
-            resume_text += page.get_text()
+        pages_text = [page.get_text() for page in doc]
         doc.close()
-    except Exception:
-        raise HTTPException(status_code=422, detail="Could not parse PDF. Ensure it is a valid, text-based PDF.")
+        resume_text = "\n".join(pages_text).strip()
+    except Exception as e:
+        logger.error("PDF parse error: %s", e)
+        raise HTTPException(status_code=422, detail="Could not parse this PDF. Make sure it is a text-based PDF, not a scanned image.")
+
+    if len(resume_text) < 50:
+        raise HTTPException(
+            status_code=422,
+            detail="This PDF appears to be a scanned image or has no readable text. Please upload a text-based PDF."
+        )
 
     word_count = len(resume_text.split())
-
-    processing_time_ms = int((time.time() - start_time) * 1000)
+    logger.info("Parsed resume: %d words, %.1f KB", word_count, file_size_kb)
 
     if not GEMINI_API_KEY:
-        return get_fallback_analysis(file.filename, file_size_kb, word_count, processing_time_ms)
+        logger.warning("GEMINI_API_KEY not set — returning fallback analysis")
+        return get_fallback_analysis(file.filename, file_size_kb, word_count,
+                                     int((time.time() - start_time) * 1000), job_title_clean)
 
     try:
-        analysis = await call_gemini(resume_text)
-    except Exception:
-        return get_fallback_analysis(file.filename, file_size_kb, word_count, processing_time_ms)
+        analysis = await call_gemini(resume_text, job_title_clean)
+        logger.info("Gemini analysis complete")
+    except json.JSONDecodeError as e:
+        logger.error("Gemini returned invalid JSON: %s", e)
+        return get_fallback_analysis(file.filename, file_size_kb, word_count,
+                                     int((time.time() - start_time) * 1000), job_title_clean)
+    except Exception as e:
+        logger.error("Gemini call failed: %s", e)
+        return get_fallback_analysis(file.filename, file_size_kb, word_count,
+                                     int((time.time() - start_time) * 1000), job_title_clean)
 
     processing_time_ms = int((time.time() - start_time) * 1000)
-
+    analysis.setdefault("interview_tips", [])
+    analysis.setdefault("salary_insight", "")
     analysis["word_count"] = word_count
     analysis["processing_time_ms"] = processing_time_ms
     analysis["filename"] = file.filename
     analysis["file_size_kb"] = file_size_kb
+    analysis["job_title"] = job_title_clean
 
     return analysis

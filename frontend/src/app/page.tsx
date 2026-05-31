@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  useId,
+} from "react";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface CriticalIssue {
   issue: string;
@@ -20,69 +28,181 @@ interface AnalysisResult {
   quick_wins: string[];
   improved_summary: string;
   verdict: string;
+  interview_tips: string[];
+  salary_insight: string;
   word_count: number;
   processing_time_ms: number;
   filename: string;
   file_size_kb: number;
+  job_title: string;
 }
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// ── Score Circle ─────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function ScoreCircle({ score, color }: { score: number; color: string }) {
+function scoreColor(score: number) {
+  if (score >= 80) return "var(--green)";
+  if (score >= 60) return "var(--yellow)";
+  return "var(--red)";
+}
+
+function verdictColor(verdict: string) {
+  if (verdict === "Highly Recommended") return "var(--green)";
+  if (verdict === "Recommended") return "var(--blue)";
+  if (verdict === "Needs Improvement") return "var(--yellow)";
+  return "var(--red)";
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+
+function Toast({
+  message,
+  type,
+  onClose,
+}: {
+  message: string;
+  type: "success" | "error" | "info";
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 3500);
+    return () => clearTimeout(t);
+  }, [onClose]);
+
+  const icon =
+    type === "success" ? "✓" : type === "error" ? "✕" : "ℹ";
+  const color =
+    type === "success"
+      ? "var(--green)"
+      : type === "error"
+      ? "var(--red)"
+      : "var(--accent)";
+
+  return (
+    <div className="toast">
+      <span
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 8,
+          background: `${color}22`,
+          border: `1px solid ${color}44`,
+          color,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 700,
+          flexShrink: 0,
+          fontSize: "0.85rem",
+        }}
+      >
+        {icon}
+      </span>
+      <span style={{ color: "var(--text2)", lineHeight: 1.4 }}>{message}</span>
+      <button
+        onClick={onClose}
+        style={{
+          marginLeft: "auto",
+          background: "none",
+          border: "none",
+          color: "var(--muted)",
+          cursor: "pointer",
+          fontSize: "1rem",
+          lineHeight: 1,
+          padding: "0 2px",
+        }}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+// ── Score Circle ──────────────────────────────────────────────────────────────
+
+function ScoreCircle({ score }: { score: number }) {
   const [displayed, setDisplayed] = useState(0);
-  const radius = 70;
-  const circ = 2 * Math.PI * radius;
+  const r = 64;
+  const circ = 2 * Math.PI * r;
+  const color = scoreColor(displayed);
   const offset = circ - (displayed / 100) * circ;
 
   useEffect(() => {
     let start: number | null = null;
-    const duration = 1500;
-    const end = score;
+    const duration = 1600;
     function step(ts: number) {
       if (!start) start = ts;
-      const progress = Math.min((ts - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplayed(Math.round(eased * end));
-      if (progress < 1) requestAnimationFrame(step);
+      const p = Math.min((ts - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setDisplayed(Math.round(eased * score));
+      if (p < 1) requestAnimationFrame(step);
     }
-    requestAnimationFrame(step);
+    const raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
   }, [score]);
 
+  const size = 168;
+  const cx = size / 2;
+
   return (
-    <div className="relative inline-flex items-center justify-center">
-      <svg width="180" height="180" style={{ transform: "rotate(-90deg)" }}>
+    <div
+      style={{
+        position: "relative",
+        width: size,
+        height: size,
+        flexShrink: 0,
+      }}
+    >
+      <svg
+        width={size}
+        height={size}
+        style={{ transform: "rotate(-90deg)", display: "block" }}
+      >
         <circle
-          className="score-circle-track"
-          cx="90"
-          cy="90"
-          r={radius}
+          className="score-track"
+          cx={cx}
+          cy={cx}
+          r={r}
           strokeWidth="10"
         />
         <circle
-          className="score-circle-fill"
-          cx="90"
-          cy="90"
-          r={radius}
+          className="score-fill"
+          cx={cx}
+          cy={cx}
+          r={r}
           strokeWidth="10"
           stroke={color}
           strokeDasharray={circ}
           strokeDashoffset={offset}
         />
       </svg>
+      {/* Centered overlay — positioned independently of SVG rotation */}
       <div
-        className="absolute flex flex-col items-center"
-        style={{ transform: "none" }}
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          pointerEvents: "none",
+        }}
       >
         <span
-          className="font-bold"
-          style={{ fontSize: "2.75rem", color, lineHeight: 1 }}
+          style={{
+            fontSize: "2.4rem",
+            fontWeight: 800,
+            lineHeight: 1,
+            color,
+            letterSpacing: "-0.04em",
+          }}
         >
           {displayed}
         </span>
-        <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>/ 100</span>
+        <span style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 2 }}>
+          / 100
+        </span>
       </div>
     </div>
   );
@@ -94,48 +214,44 @@ function ProgressBar({
   label,
   value,
   max = 20,
+  delay = 0,
 }: {
   label: string;
   value: number;
   max?: number;
+  delay?: number;
 }) {
-  const [width, setWidth] = useState(0);
+  const [w, setW] = useState(0);
   const pct = Math.round((value / max) * 100);
   const color =
-    pct >= 75
-      ? "var(--green)"
-      : pct >= 50
-      ? "var(--yellow)"
-      : "var(--red)";
+    pct >= 75 ? "var(--green)" : pct >= 50 ? "var(--yellow)" : "var(--red)";
 
   useEffect(() => {
-    const t = setTimeout(() => setWidth(pct), 80);
+    const t = setTimeout(() => setW(pct), 120 + delay);
     return () => clearTimeout(t);
-  }, [pct]);
+  }, [pct, delay]);
 
   return (
-    <div className="flex items-center gap-3" style={{ minWidth: 0 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
       <span
         style={{
-          width: 90,
-          fontSize: "0.85rem",
-          color: "var(--muted)",
+          width: 88,
+          fontSize: "0.82rem",
+          color: "var(--text2)",
           flexShrink: 0,
         }}
       >
         {label}
       </span>
-      <div className="progress-bar-bg flex-1">
-        <div
-          className="progress-bar-fill"
-          style={{ width: `${width}%`, background: color }}
-        />
+      <div className="bar-bg" style={{ flex: 1 }}>
+        <div className="bar-fill" style={{ width: `${w}%`, background: color }} />
       </div>
       <span
         style={{
-          width: 40,
+          width: 36,
           textAlign: "right",
-          fontSize: "0.85rem",
+          fontSize: "0.82rem",
+          fontWeight: 700,
           color,
           flexShrink: 0,
         }}
@@ -146,42 +262,53 @@ function ProgressBar({
   );
 }
 
-// ── Section Icon ──────────────────────────────────────────────────────────────
+// ── Section Chip ──────────────────────────────────────────────────────────────
 
-function SectionIcon({
-  label,
-  found,
-}: {
-  label: string;
-  found: boolean;
-}) {
+const SECTION_ICONS: Record<string, string> = {
+  contact: "✉",
+  summary: "📝",
+  experience: "💼",
+  education: "🎓",
+  skills: "⚡",
+  certifications: "🏅",
+};
+
+function SectionChip({ label, found }: { label: string; found: boolean }) {
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "0.5rem",
+        padding: "0.5rem 0.9rem",
+        borderRadius: 10,
+        background: found ? "rgba(34,197,94,0.07)" : "rgba(239,68,68,0.07)",
+        border: `1px solid ${found ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
+      }}
+    >
+      <span style={{ fontSize: "1rem" }}>
+        {SECTION_ICONS[label.toLowerCase()] ?? "•"}
+      </span>
+      <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text2)" }}>
+        {label}
+      </span>
+      <span
         style={{
-          width: 48,
-          height: 48,
-          borderRadius: 12,
-          background: found
-            ? "rgba(34,197,94,0.1)"
-            : "rgba(239,68,68,0.1)",
-          border: `1px solid ${found ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: "1.2rem",
+          marginLeft: "auto",
+          fontSize: "0.75rem",
+          fontWeight: 700,
+          color: found ? "var(--green)" : "var(--red)",
         }}
       >
         {found ? "✓" : "✗"}
-      </div>
-      <span style={{ fontSize: "0.7rem", color: "var(--muted)" }}>{label}</span>
+      </span>
     </div>
   );
 }
 
 // ── Impact Badge ──────────────────────────────────────────────────────────────
 
-function ImpactBadge({ impact }: { impact: "High" | "Medium" | "Low" }) {
+function ImpactBadge({ impact }: { impact: string }) {
   const cls =
     impact === "High"
       ? "badge-high"
@@ -189,64 +316,170 @@ function ImpactBadge({ impact }: { impact: "High" | "Medium" | "Low" }) {
       ? "badge-medium"
       : "badge-low";
   return (
-    <span
-      className={cls}
-      style={{
-        fontSize: "0.7rem",
-        fontWeight: 700,
-        borderRadius: 6,
-        padding: "0.15rem 0.5rem",
-        letterSpacing: "0.05em",
-      }}
-    >
+    <span className={`badge ${cls}`} style={{ fontSize: "0.68rem" }}>
       {impact}
     </span>
   );
 }
 
-// ── Upload Area ───────────────────────────────────────────────────────────────
+// ── Loading Overlay ───────────────────────────────────────────────────────────
+
+const STEPS = [
+  "Parsing PDF document…",
+  "Extracting resume text…",
+  "Sending to Gemini AI…",
+  "Running ATS analysis…",
+  "Scoring your resume…",
+  "Generating fixes…",
+];
+
+function LoadingOverlay() {
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    }, 1800);
+    return () => clearInterval(iv);
+  }, []);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "2rem",
+        padding: "3rem 1rem",
+      }}
+    >
+      {/* Animated ring */}
+      <div style={{ position: "relative", width: 80, height: 80 }}>
+        <svg width={80} height={80} style={{ transform: "rotate(-90deg)" }}>
+          <circle cx={40} cy={40} r={34} fill="none" stroke="var(--border2)" strokeWidth="5" />
+          <circle
+            cx={40}
+            cy={40}
+            r={34}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="5"
+            strokeLinecap="round"
+            strokeDasharray={`${2 * Math.PI * 34 * 0.6} ${2 * Math.PI * 34 * 0.4}`}
+            style={{ animation: "spinning 1.1s linear infinite" }}
+          />
+        </svg>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "1.5rem",
+          }}
+        >
+          🤖
+        </div>
+      </div>
+
+      <div style={{ textAlign: "center" }}>
+        <p
+          style={{
+            fontWeight: 700,
+            fontSize: "1.05rem",
+            marginBottom: "0.35rem",
+            color: "var(--text)",
+          }}
+        >
+          Analyzing with Gemini AI
+        </p>
+        <p
+          style={{
+            fontSize: "0.85rem",
+            color: "var(--accent)",
+            minHeight: "1.3em",
+            transition: "opacity 0.3s",
+          }}
+        >
+          {STEPS[step]}
+        </p>
+      </div>
+
+      {/* Step dots */}
+      <div style={{ display: "flex", gap: "0.4rem" }}>
+        {STEPS.map((_, i) => (
+          <div
+            key={i}
+            className={`step-dot ${i < step ? "done" : i === step ? "active" : ""}`}
+          />
+        ))}
+      </div>
+
+      <p style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
+        This usually takes 10–20 seconds
+      </p>
+    </div>
+  );
+}
+
+// ── Upload Section ────────────────────────────────────────────────────────────
 
 function UploadSection({
   onResult,
+  onToast,
 }: {
   onResult: (r: AnalysisResult) => void;
+  onToast: (msg: string, type: "success" | "error" | "info") => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
+  const [jobTitle, setJobTitle] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const jobId = useId();
 
-  const validateAndSet = (f: File) => {
+  const validateAndSet = useCallback((f: File) => {
     setError("");
     if (!f.name.toLowerCase().endsWith(".pdf")) {
-      setError("Only PDF files are accepted.");
-      return;
+      setError("Only PDF files are accepted. Please upload a .pdf file.");
+      return false;
     }
     if (f.size > 5 * 1024 * 1024) {
-      setError("File exceeds 5MB limit.");
-      return;
+      setError("File exceeds the 5MB limit. Compress your PDF and try again.");
+      return false;
     }
     setFile(f);
-  };
-
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragActive(false);
-    const f = e.dataTransfer.files[0];
-    if (f) validateAndSet(f);
+    return true;
   }, []);
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragActive(false);
+      const f = e.dataTransfer.files[0];
+      if (f) validateAndSet(f);
+    },
+    [validateAndSet]
+  );
 
   const onDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setDragActive(true);
   };
 
-  const onDragLeave = () => setDragActive(false);
+  // Fix: check relatedTarget to avoid flicker when hovering child elements
+  const onDragLeave = (e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDragActive(false);
+    }
+  };
 
   const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (f) validateAndSet(f);
+    e.target.value = "";
   };
 
   const analyze = async () => {
@@ -256,32 +489,65 @@ function UploadSection({
     try {
       const form = new FormData();
       form.append("file", file);
+      if (jobTitle.trim()) form.append("job_title", jobTitle.trim());
+
       const res = await fetch(`${API_URL}/analyze`, {
         method: "POST",
         body: form,
       });
+
       if (!res.ok) {
-        const data = (await res.json()) as { detail?: string };
-        throw new Error(data.detail ?? "Analysis failed.");
+        const data = (await res.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(data.detail ?? `Server error (${res.status})`);
       }
+
       const result = (await res.json()) as AnalysisResult;
       onResult(result);
+      onToast("Analysis complete!", "success");
     } catch (err: unknown) {
-      if (err instanceof TypeError && err.message.includes("fetch")) {
-        setError(
-          "Cannot connect to the backend. Make sure it is running at " +
-            API_URL
-        );
-      } else {
-        setError(err instanceof Error ? err.message : "Unexpected error.");
-      }
+      const msg =
+        err instanceof TypeError
+          ? "Cannot reach the backend server. It may be waking up — try again in 30 seconds."
+          : err instanceof Error
+          ? err.message
+          : "An unexpected error occurred.";
+      setError(msg);
+      onToast(msg, "error");
     } finally {
       setAnalyzing(false);
     }
   };
 
+  if (analyzing) return <LoadingOverlay />;
+
   return (
-    <div style={{ maxWidth: 640, margin: "0 auto", width: "100%" }}>
+    <div style={{ maxWidth: 600, margin: "0 auto", width: "100%" }}>
+      {/* Job title input */}
+      <div style={{ marginBottom: "1rem" }}>
+        <label
+          htmlFor={jobId}
+          style={{
+            display: "block",
+            fontSize: "0.8rem",
+            fontWeight: 600,
+            color: "var(--text2)",
+            marginBottom: "0.4rem",
+          }}
+        >
+          Target Job Title{" "}
+          <span style={{ color: "var(--muted)", fontWeight: 400 }}>(optional — for tailored analysis)</span>
+        </label>
+        <input
+          id={jobId}
+          className="input-field"
+          type="text"
+          placeholder="e.g. Senior Software Engineer, Product Manager, Data Scientist…"
+          value={jobTitle}
+          onChange={(e) => setJobTitle(e.target.value)}
+          maxLength={80}
+        />
+      </div>
+
       {/* Dropzone */}
       <div
         className={`dropzone${dragActive ? " active" : ""}`}
@@ -289,131 +555,132 @@ function UploadSection({
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onClick={() => inputRef.current?.click()}
-        style={{ padding: "3rem 2rem", textAlign: "center" }}
+        style={{ padding: "2.75rem 2rem", textAlign: "center" }}
       >
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf"
+          accept=".pdf,application/pdf"
           style={{ display: "none" }}
           onChange={onInputChange}
         />
-        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📄</div>
+
         {file ? (
           <>
-            <p style={{ fontWeight: 600, color: "var(--accent)" }}>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 14,
+                background: "rgba(99,102,241,0.12)",
+                border: "1px solid rgba(99,102,241,0.3)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "1.6rem",
+                margin: "0 auto 1rem",
+              }}
+            >
+              📄
+            </div>
+            <p style={{ fontWeight: 700, color: "var(--accent)", fontSize: "0.95rem" }}>
               {file.name}
             </p>
-            <p style={{ fontSize: "0.85rem", color: "var(--muted)", marginTop: 4 }}>
-              {(file.size / 1024).toFixed(1)} KB · Click to change
+            <p style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: 6 }}>
+              {(file.size / 1024).toFixed(1)} KB · Click to change file
             </p>
           </>
         ) : (
           <>
-            <p style={{ fontWeight: 600, fontSize: "1.05rem" }}>
-              Drop your resume here or click to upload
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 16,
+                background: "rgba(99,102,241,0.08)",
+                border: "1px dashed rgba(99,102,241,0.3)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "1.8rem",
+                margin: "0 auto 1.25rem",
+              }}
+            >
+              📤
+            </div>
+            <p style={{ fontWeight: 700, fontSize: "1rem", marginBottom: 8 }}>
+              Drop your resume here or{" "}
+              <span style={{ color: "var(--accent)" }}>click to browse</span>
             </p>
-            <p style={{ fontSize: "0.85rem", color: "var(--muted)", marginTop: 8 }}>
-              PDF only · Max 5MB · 100% private
+            <p style={{ fontSize: "0.82rem", color: "var(--muted)" }}>
+              PDF only · Max 5MB · 100% private · Never stored
             </p>
           </>
         )}
       </div>
 
-      {/* Error */}
+      {/* Error message */}
       {error && (
         <div
           style={{
-            marginTop: "1rem",
+            marginTop: "0.875rem",
             padding: "0.75rem 1rem",
             borderRadius: 10,
-            background: "rgba(239,68,68,0.1)",
-            border: "1px solid rgba(239,68,68,0.3)",
-            color: "var(--red)",
-            fontSize: "0.9rem",
+            background: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.25)",
+            color: "#f87171",
+            fontSize: "0.85rem",
+            lineHeight: 1.5,
+            display: "flex",
+            gap: "0.5rem",
           }}
         >
-          {error}
-          {error.includes("connect") && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                analyze();
-              }}
-              style={{
-                marginLeft: 12,
-                color: "var(--accent)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                textDecoration: "underline",
-                fontSize: "0.9rem",
-              }}
-            >
-              Retry
-            </button>
-          )}
+          <span style={{ flexShrink: 0 }}>⚠</span>
+          <span>{error}</span>
         </div>
       )}
 
-      {/* Analyze button */}
+      {/* CTA */}
       <button
-        className="btn-accent"
-        style={{ width: "100%", marginTop: "1.25rem" }}
+        className="btn-primary"
+        style={{ width: "100%", marginTop: "1rem", padding: "1rem" }}
         onClick={analyze}
-        disabled={!file || analyzing}
+        disabled={!file}
       >
-        {analyzing ? (
-          <>
-            <span className="spinner" />
-            Analyzing your resume with AI...
-          </>
-        ) : (
-          "Analyze My Resume"
-        )}
+        Analyze My Resume →
       </button>
+
+      <p style={{ textAlign: "center", fontSize: "0.75rem", color: "var(--muted)", marginTop: "0.75rem" }}>
+        🔒 Your resume is processed in memory only. We never store your data.
+      </p>
     </div>
   );
 }
 
-// ── Results Section ───────────────────────────────────────────────────────────
+// ── Results ───────────────────────────────────────────────────────────────────
+
+const TABS = ["Overview", "Issues", "Keywords", "AI Fixes"] as const;
+type Tab = (typeof TABS)[number];
 
 function Results({
   result,
   onReset,
+  onToast,
 }: {
   result: AnalysisResult;
   onReset: () => void;
+  onToast: (msg: string, type: "success" | "error" | "info") => void;
 }) {
+  const [tab, setTab] = useState<Tab>("Overview");
   const [copied, setCopied] = useState(false);
 
-  const scoreColor =
-    result.ats_score >= 80
-      ? "var(--green)"
-      : result.ats_score >= 60
-      ? "var(--yellow)"
-      : "var(--red)";
-
-  const verdictColor =
-    result.verdict === "Highly Recommended"
-      ? "var(--green)"
-      : result.verdict === "Recommended"
-      ? "#60a5fa"
-      : result.verdict === "Needs Improvement"
-      ? "var(--yellow)"
-      : "var(--red)";
+  const color = scoreColor(result.ats_score);
+  const vColor = verdictColor(result.verdict);
 
   const sortedIssues = [...result.critical_issues].sort((a, b) => {
-    const order: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
-    return (order[a.impact] ?? 3) - (order[b.impact] ?? 3);
+    const o: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
+    return (o[a.impact] ?? 3) - (o[b.impact] ?? 3);
   });
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(result.improved_summary).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
 
   const sectionLabels: Record<string, string> = {
     contact: "Contact",
@@ -424,7 +691,7 @@ function Results({
     certifications: "Certifications",
   };
 
-  const categoryLabels: Record<string, string> = {
+  const catLabels: Record<string, string> = {
     keywords: "Keywords",
     formatting: "Formatting",
     experience: "Experience",
@@ -432,261 +699,420 @@ function Results({
     education: "Education",
   };
 
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(result.improved_summary);
+      setCopied(true);
+      onToast("Summary copied to clipboard!", "success");
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      onToast("Copy failed — select the text manually.", "error");
+    }
+  };
+
+  const totalScore = Object.values(result.category_scores).reduce(
+    (a, b) => a + b,
+    0
+  );
+
   return (
-    <div className="results-enter" style={{ width: "100%" }}>
-      {/* 3a — Score header */}
+    <div className="fade-up" style={{ width: "100%" }}>
+      {/* ── Score header ── */}
       <div
-        className="glass-card"
+        className="glass"
         style={{
           padding: "2rem",
-          marginBottom: "1.5rem",
-          textAlign: "center",
+          marginBottom: "1.25rem",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "1.5rem",
+          alignItems: "center",
         }}
       >
-        <ScoreCircle score={result.ats_score} color={scoreColor} />
-        <div style={{ marginTop: "1rem", display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-          <span
-            style={{
-              background: "rgba(99,102,241,0.15)",
-              border: "1px solid rgba(99,102,241,0.3)",
-              color: "#a5b4fc",
-              borderRadius: 8,
-              padding: "0.3rem 0.9rem",
-              fontWeight: 700,
-              fontSize: "1rem",
-            }}
-          >
-            {result.grade}
-          </span>
-          <span
-            style={{
-              background: "rgba(0,0,0,0.3)",
-              border: `1px solid ${verdictColor}`,
-              color: verdictColor,
-              borderRadius: 8,
-              padding: "0.3rem 0.9rem",
-              fontWeight: 600,
-              fontSize: "0.85rem",
-            }}
-          >
-            {result.verdict}
-          </span>
-        </div>
-        <p
-          style={{
-            marginTop: "1rem",
-            color: "var(--muted)",
-            fontSize: "0.9rem",
-            maxWidth: 480,
-            margin: "1rem auto 0",
-            lineHeight: 1.6,
-          }}
-        >
-          {result.summary}
-        </p>
-        <p style={{ marginTop: "0.75rem", fontSize: "0.78rem", color: "#52525b" }}>
-          {result.filename} · {result.file_size_kb} KB · {result.word_count} words ·{" "}
-          {result.processing_time_ms}ms
-        </p>
-      </div>
+        <ScoreCircle score={result.ats_score} />
 
-      {/* Grid: category scores + sections */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-          gap: "1.25rem",
-          marginBottom: "1.5rem",
-        }}
-      >
-        {/* 3b — Category scores */}
-        <div className="glass-card" style={{ padding: "1.5rem" }}>
-          <p className="section-label">Category Scores</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
-            {Object.entries(result.category_scores).map(([key, val]) => (
-              <ProgressBar
-                key={key}
-                label={categoryLabels[key] ?? key}
-                value={val}
-              />
-            ))}
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "0.5rem",
+              marginBottom: "0.75rem",
+              alignItems: "center",
+            }}
+          >
+            <span
+              style={{
+                background: "rgba(99,102,241,0.12)",
+                border: "1px solid rgba(99,102,241,0.3)",
+                color: "#a5b4fc",
+                borderRadius: 8,
+                padding: "0.25rem 0.8rem",
+                fontWeight: 800,
+                fontSize: "1.1rem",
+              }}
+            >
+              {result.grade}
+            </span>
+            <span
+              style={{
+                border: `1px solid ${vColor}44`,
+                background: `${vColor}14`,
+                color: vColor,
+                borderRadius: 8,
+                padding: "0.25rem 0.8rem",
+                fontWeight: 600,
+                fontSize: "0.82rem",
+              }}
+            >
+              {result.verdict}
+            </span>
+            {result.job_title && (
+              <span className="badge badge-accent">
+                🎯 {result.job_title}
+              </span>
+            )}
+          </div>
+
+          <p
+            style={{
+              fontSize: "0.9rem",
+              color: "var(--text2)",
+              lineHeight: 1.65,
+              marginBottom: "0.75rem",
+            }}
+          >
+            {result.summary}
+          </p>
+
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "1.25rem",
+              fontSize: "0.78rem",
+              color: "var(--muted)",
+            }}
+          >
+            <span>📄 {result.filename}</span>
+            <span>📊 {result.word_count} words</span>
+            <span>💾 {result.file_size_kb} KB</span>
+            <span>⚡ {(result.processing_time_ms / 1000).toFixed(1)}s</span>
+            <span style={{ color }}>Total: {totalScore}/100</span>
           </div>
         </div>
+      </div>
 
-        {/* 3c — Sections detected */}
-        <div className="glass-card" style={{ padding: "1.5rem" }}>
-          <p className="section-label">Sections Detected</p>
+      {/* ── Salary insight ── */}
+      {result.salary_insight && (
+        <div
+          className="fade-up delay-1"
+          style={{
+            padding: "0.8rem 1.25rem",
+            borderRadius: 12,
+            background: "rgba(99,102,241,0.06)",
+            border: "1px solid rgba(99,102,241,0.18)",
+            marginBottom: "1.25rem",
+            display: "flex",
+            gap: "0.6rem",
+            alignItems: "center",
+            fontSize: "0.85rem",
+            color: "var(--text2)",
+          }}
+        >
+          <span>💰</span>
+          <span>{result.salary_insight}</span>
+        </div>
+      )}
+
+      {/* ── Tabs ── */}
+      <div
+        className="fade-up delay-2"
+        style={{
+          display: "flex",
+          gap: "0.35rem",
+          flexWrap: "wrap",
+          marginBottom: "1.25rem",
+          padding: "0.35rem",
+          background: "var(--surface)",
+          borderRadius: 12,
+          border: "1px solid var(--border)",
+        }}
+      >
+        {TABS.map((t) => (
+          <button
+            key={t}
+            className={`tab-btn${tab === t ? " active" : ""}`}
+            onClick={() => setTab(t)}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* ── TAB: Overview ── */}
+      {tab === "Overview" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+          {/* Category scores + sections grid */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: "1rem",
-              marginTop: "0.5rem",
+              gridTemplateColumns: "repeat(auto-fit, minmax(270px, 1fr))",
+              gap: "1.25rem",
             }}
           >
-            {Object.entries(result.sections_found).map(([key, found]) => (
-              <SectionIcon
-                key={key}
-                label={sectionLabels[key] ?? key}
-                found={found}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 3d — Strengths */}
-      <div className="glass-card" style={{ padding: "1.5rem", marginBottom: "1.25rem" }}>
-        <p className="section-label">Strengths</p>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-          {result.strengths.map((s, i) => (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                gap: "0.75rem",
-                alignItems: "flex-start",
-                padding: "0.75rem",
-                borderRadius: 10,
-                background: "rgba(34,197,94,0.06)",
-                border: "1px solid rgba(34,197,94,0.15)",
-              }}
-            >
-              <span style={{ color: "var(--green)", fontWeight: 700, flexShrink: 0 }}>✓</span>
-              <span style={{ fontSize: "0.9rem", lineHeight: 1.5 }}>{s}</span>
+            <div className="glass fade-up delay-1" style={{ padding: "1.5rem" }}>
+              <p className="label" style={{ marginBottom: "1rem" }}>Category Scores</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                {Object.entries(result.category_scores).map(([k, v], i) => (
+                  <ProgressBar
+                    key={k}
+                    label={catLabels[k] ?? k}
+                    value={v}
+                    delay={i * 80}
+                  />
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
-      </div>
 
-      {/* 3e — Critical Issues */}
-      {sortedIssues.length > 0 && (
-        <div className="glass-card" style={{ padding: "1.5rem", marginBottom: "1.25rem" }}>
-          <p className="section-label">Critical Issues</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            {sortedIssues.map((issue, i) => (
+            <div className="glass fade-up delay-2" style={{ padding: "1.5rem" }}>
+              <p className="label" style={{ marginBottom: "1rem" }}>Sections Detected</p>
               <div
-                key={i}
-                className={`stagger-${Math.min(i + 1, 5)}`}
                 style={{
-                  padding: "1rem 1.25rem",
-                  borderRadius: 12,
-                  background: "rgba(255,255,255,0.02)",
-                  border: "1px solid var(--border)",
-                  animation: "resultsIn 0.4s ease both",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "0.5rem",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.4rem" }}>
-                  <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>{issue.issue}</span>
-                  <ImpactBadge impact={issue.impact} />
-                </div>
-                <p style={{ fontSize: "0.85rem", color: "var(--muted)", lineHeight: 1.5 }}>
-                  {issue.fix}
-                </p>
+                {Object.entries(result.sections_found).map(([k, v]) => (
+                  <SectionChip
+                    key={k}
+                    label={sectionLabels[k] ?? k}
+                    found={v}
+                  />
+                ))}
               </div>
-            ))}
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* 3f — Missing keywords */}
-      {result.missing_keywords.length > 0 && (
-        <div className="glass-card" style={{ padding: "1.5rem", marginBottom: "1.25rem" }}>
-          <p className="section-label">Missing Keywords</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", overflowX: "auto" }}>
-            {result.missing_keywords.map((kw) => (
-              <span key={kw} className="keyword-pill">
-                {kw}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 3g — Quick wins */}
-      {result.quick_wins.length > 0 && (
-        <div className="glass-card" style={{ padding: "1.5rem", marginBottom: "1.25rem" }}>
-          <p className="section-label">Quick Wins · Fix in 30 minutes</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-            {result.quick_wins.map((win, i) => (
-              <div key={i} style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-                <span
+          {/* Strengths */}
+          <div className="glass fade-up delay-3" style={{ padding: "1.5rem" }}>
+            <p className="label" style={{ marginBottom: "1rem" }}>Strengths</p>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: "0.6rem",
+              }}
+            >
+              {result.strengths.map((s, i) => (
+                <div
+                  key={i}
                   style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 6,
-                    border: "1.5px solid var(--accent)",
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "0.75rem",
-                    color: "var(--accent)",
-                    fontWeight: 700,
-                    flexShrink: 0,
-                    marginTop: 1,
+                    gap: "0.6rem",
+                    padding: "0.75rem",
+                    borderRadius: 10,
+                    background: "rgba(34,197,94,0.05)",
+                    border: "1px solid rgba(34,197,94,0.15)",
                   }}
                 >
-                  {i + 1}
-                </span>
-                <span style={{ fontSize: "0.9rem", lineHeight: 1.5 }}>{win}</span>
+                  <span style={{ color: "var(--green)", fontWeight: 700, flexShrink: 0 }}>✓</span>
+                  <span style={{ fontSize: "0.85rem", color: "var(--text2)", lineHeight: 1.5 }}>{s}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Interview tips */}
+          {result.interview_tips && result.interview_tips.length > 0 && (
+            <div className="glass fade-up delay-4" style={{ padding: "1.5rem" }}>
+              <p className="label" style={{ marginBottom: "1rem" }}>Interview Tips</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                {result.interview_tips.map((tip, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      gap: "0.65rem",
+                      padding: "0.75rem",
+                      borderRadius: 10,
+                      background: "rgba(59,130,246,0.05)",
+                      border: "1px solid rgba(59,130,246,0.15)",
+                    }}
+                  >
+                    <span style={{ color: "var(--blue)", flexShrink: 0 }}>💡</span>
+                    <span style={{ fontSize: "0.85rem", color: "var(--text2)", lineHeight: 1.5 }}>{tip}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB: Issues ── */}
+      {tab === "Issues" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {sortedIssues.length === 0 ? (
+            <div
+              className="glass"
+              style={{ padding: "2rem", textAlign: "center", color: "var(--muted)" }}
+            >
+              <p style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🎉</p>
+              <p>No critical issues found! Your resume is in great shape.</p>
+            </div>
+          ) : (
+            sortedIssues.map((issue, i) => (
+              <div
+                key={i}
+                className={`glass fade-up delay-${Math.min(i + 1, 6) as 1}`}
+                style={{ padding: "1.25rem 1.5rem" }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "0.75rem",
+                    marginBottom: "0.6rem",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span style={{ fontWeight: 700, fontSize: "0.95rem", flex: 1 }}>
+                    {issue.issue}
+                  </span>
+                  <ImpactBadge impact={issue.impact} />
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.5rem",
+                    padding: "0.65rem 0.85rem",
+                    borderRadius: 8,
+                    background: "rgba(99,102,241,0.06)",
+                    border: "1px solid rgba(99,102,241,0.15)",
+                  }}
+                >
+                  <span style={{ color: "var(--accent)", flexShrink: 0, fontSize: "0.85rem" }}>→</span>
+                  <p style={{ fontSize: "0.85rem", color: "var(--text2)", lineHeight: 1.55 }}>
+                    {issue.fix}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── TAB: Keywords ── */}
+      {tab === "Keywords" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+          <div className="glass" style={{ padding: "1.5rem" }}>
+            <p className="label" style={{ marginBottom: "0.5rem" }}>Missing Keywords</p>
+            <p style={{ fontSize: "0.82rem", color: "var(--muted)", marginBottom: "1rem" }}>
+              Add these keywords naturally into your resume to improve ATS ranking.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+              {result.missing_keywords.map((kw) => (
+                <span key={kw} className="pill">{kw}</span>
+              ))}
+            </div>
+          </div>
+
+          <div className="glass" style={{ padding: "1.5rem" }}>
+            <p className="label" style={{ marginBottom: "1rem" }}>Quick Wins · Do these in 30 minutes</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+              {result.quick_wins.map((win, i) => (
+                <div
+                  key={i}
+                  style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}
+                >
+                  <span
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 7,
+                      border: "1.5px solid var(--accent)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "0.72rem",
+                      fontWeight: 800,
+                      color: "var(--accent)",
+                      flexShrink: 0,
+                      marginTop: 1,
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span style={{ fontSize: "0.875rem", color: "var(--text2)", lineHeight: 1.55 }}>
+                    {win}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* 3h — Improved summary */}
-      <div className="glass-card" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
-          <p className="section-label" style={{ marginBottom: 0 }}>AI-Rewritten Summary</p>
-          <button
-            onClick={copyToClipboard}
-            style={{
-              background: copied ? "rgba(34,197,94,0.1)" : "rgba(99,102,241,0.1)",
-              border: `1px solid ${copied ? "rgba(34,197,94,0.3)" : "rgba(99,102,241,0.3)"}`,
-              color: copied ? "var(--green)" : "var(--accent)",
-              borderRadius: 8,
-              padding: "0.3rem 0.8rem",
-              cursor: "pointer",
-              fontSize: "0.8rem",
-              fontWeight: 600,
-              transition: "all 0.2s",
-            }}
-          >
-            {copied ? "Copied!" : "Copy"}
-          </button>
-        </div>
-        <div className="summary-box">
-          <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
-            {result.improved_summary}
-          </p>
-        </div>
-      </div>
+      {/* ── TAB: AI Fixes ── */}
+      {tab === "AI Fixes" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+          <div className="glass" style={{ padding: "1.5rem" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "1rem",
+                flexWrap: "wrap",
+                gap: "0.5rem",
+              }}
+            >
+              <div>
+                <p className="label">AI-Rewritten Professional Summary</p>
+                <p style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: 2 }}>
+                  ATS-optimized · Ready to copy-paste
+                </p>
+              </div>
+              <button
+                onClick={copyToClipboard}
+                className="btn-ghost"
+                style={{ padding: "0.5rem 1rem", fontSize: "0.8rem" }}
+              >
+                {copied ? "✓ Copied!" : "Copy"}
+              </button>
+            </div>
+            <div className="summary-inset">
+              <p style={{ fontSize: "0.9rem", lineHeight: 1.75, color: "var(--text)" }}>
+                {result.improved_summary}
+              </p>
+            </div>
+          </div>
 
-      {/* 3i — Analyze another */}
-      <div style={{ textAlign: "center" }}>
-        <button
-          onClick={onReset}
-          style={{
-            background: "none",
-            border: "1px solid var(--border)",
-            color: "var(--muted)",
-            borderRadius: 10,
-            padding: "0.75rem 2rem",
-            cursor: "pointer",
-            fontSize: "0.9rem",
-            transition: "border-color 0.2s, color 0.2s",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)";
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)";
-          }}
-        >
-          Analyze Another Resume
+          <div className="glass" style={{ padding: "1.5rem" }}>
+            <p className="label" style={{ marginBottom: "1rem" }}>Quick Wins</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+              {result.quick_wins.map((win, i) => (
+                <div
+                  key={i}
+                  style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}
+                >
+                  <span style={{ color: "var(--green)", flexShrink: 0, marginTop: 2 }}>✓</span>
+                  <span style={{ fontSize: "0.875rem", color: "var(--text2)", lineHeight: 1.55 }}>
+                    {win}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset */}
+      <div style={{ textAlign: "center", marginTop: "2rem" }}>
+        <button className="btn-ghost" onClick={onReset}>
+          ← Analyze Another Resume
         </button>
       </div>
     </div>
@@ -699,79 +1125,150 @@ const FEATURES = [
   {
     icon: "⚡",
     title: "Instant ATS Score",
-    desc: "Get your resume's ATS compatibility score in under 10 seconds, powered by Google Gemini AI.",
+    desc: "Score your resume against real ATS criteria in under 20 seconds using Google Gemini AI.",
   },
   {
     icon: "🔍",
-    title: "Critical Issues Found",
-    desc: "Pinpoint exact problems preventing your resume from passing ATS filters — with precise fixes.",
+    title: "Critical Issues",
+    desc: "Identify exact problems — missing keywords, poor formatting, weak bullet points — with precise fixes.",
   },
   {
-    icon: "🔑",
-    title: "Missing Keywords",
-    desc: "Discover industry keywords your resume is missing that ATS systems like Workday scan for.",
+    icon: "🎯",
+    title: "Role-Specific Analysis",
+    desc: "Enter your target job title and get tailored keyword recommendations and salary insights.",
   },
   {
     icon: "✨",
     title: "AI-Rewritten Summary",
-    desc: "Receive a professionally rewritten summary tailored to your experience — ready to copy and paste.",
+    desc: "Get a professionally rewritten, ATS-optimized summary tailored to your background.",
   },
+];
+
+const HOW_IT_WORKS = [
+  { n: "1", title: "Upload your PDF", desc: "Drag and drop your resume — text-based PDF, max 5MB." },
+  { n: "2", title: "Add job title", desc: "Optionally enter the role you're targeting for precise analysis." },
+  { n: "3", title: "Gemini analyzes", desc: "Our AI runs a full ATS scan: keywords, formatting, sections, impact." },
+  { n: "4", title: "Get your report", desc: "Review your score, fix issues, copy your improved summary." },
 ];
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Home() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [toast, setToast] = useState<{
+    msg: string;
+    type: "success" | "error" | "info";
+  } | null>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+
+  const showToast = useCallback(
+    (msg: string, type: "success" | "error" | "info") => {
+      setToast({ msg, type });
+    },
+    []
+  );
+
+  const handleResult = useCallback((r: AnalysisResult) => {
+    setResult(r);
+    setTimeout(() => {
+      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  }, []);
+
+  const handleReset = useCallback(() => {
+    setResult(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      {/* Hero */}
-      <div className="hero-gradient" style={{ paddingBottom: "3rem" }}>
+      {/* ── Navbar ── */}
+      <nav className="navbar">
         <div
           style={{
-            maxWidth: 760,
+            maxWidth: 1100,
             margin: "0 auto",
-            padding: "5rem 1.5rem 2rem",
+            padding: "0 1.5rem",
+            height: 60,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+            <span style={{ fontSize: "1.25rem" }}>🤖</span>
+            <span style={{ fontWeight: 800, fontSize: "1rem", letterSpacing: "-0.02em" }}>
+              ResumeAI
+            </span>
+            <span
+              className="badge badge-accent hide-mobile"
+              style={{ marginLeft: 4, fontSize: "0.62rem" }}
+            >
+              FREE
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: "1.5rem", fontSize: "0.82rem", color: "var(--muted)" }}>
+            <span className="hide-mobile">Powered by Gemini 1.5 Flash</span>
+            <a
+              href="https://github.com/Thrishanth28/ai-resume-analyzer"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "var(--text2)", textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+              </svg>
+              GitHub
+            </a>
+          </div>
+        </div>
+      </nav>
+
+      {/* ── Hero ── */}
+      <div className="hero-bg">
+        <div
+          style={{
+            maxWidth: 720,
+            margin: "0 auto",
+            padding: "5rem 1.5rem 4rem",
             textAlign: "center",
             position: "relative",
             zIndex: 1,
           }}
         >
-          {/* Badge */}
           <div style={{ marginBottom: "1.5rem" }}>
             <span
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
-                background: "rgba(99,102,241,0.12)",
-                border: "1px solid rgba(99,102,241,0.3)",
+                gap: 8,
+                background: "rgba(99,102,241,0.1)",
+                border: "1px solid rgba(99,102,241,0.25)",
                 color: "#a5b4fc",
                 borderRadius: 999,
-                padding: "0.35rem 1rem",
+                padding: "0.35rem 1.1rem",
                 fontSize: "0.78rem",
-                fontWeight: 600,
-                letterSpacing: "0.04em",
+                fontWeight: 700,
+                letterSpacing: "0.05em",
               }}
             >
-              <span>✦</span> AI-Powered · ATS Optimized · Free
+              ✦ AI-Powered · ATS Optimized · 100% Free
             </span>
           </div>
 
-          {/* H1 */}
           <h1
             style={{
-              fontSize: "clamp(2.2rem, 6vw, 3.75rem)",
-              fontWeight: 800,
-              lineHeight: 1.1,
-              letterSpacing: "-0.03em",
+              fontSize: "clamp(2rem, 6vw, 3.8rem)",
+              fontWeight: 900,
+              lineHeight: 1.08,
+              letterSpacing: "-0.04em",
               marginBottom: "1.25rem",
             }}
           >
             Is Your Resume{" "}
             <span
               style={{
-                background: "linear-gradient(135deg, #6366f1 0%, #a78bfa 100%)",
+                background: "linear-gradient(135deg, #6366f1 0%, #a78bfa 60%, #e879f9 100%)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
                 backgroundClip: "text",
@@ -784,80 +1281,150 @@ export default function Home() {
           <p
             style={{
               fontSize: "1.1rem",
-              color: "var(--muted)",
+              color: "var(--text2)",
               lineHeight: 1.7,
-              maxWidth: 520,
+              maxWidth: 500,
               margin: "0 auto 2.5rem",
             }}
           >
-            Upload your resume and get an instant ATS score, find critical
-            issues, and get exact fixes to land more interviews.
+            Upload your resume and get an instant ATS score, uncover critical
+            issues, and receive exact fixes to land more interviews.
           </p>
 
-          {/* Stats */}
+          {/* Stats row */}
           <div
             style={{
               display: "flex",
               justifyContent: "center",
-              gap: "2.5rem",
-              marginBottom: "3rem",
+              gap: "2rem",
+              marginBottom: "3.5rem",
               flexWrap: "wrap",
             }}
           >
             {[
-              ["⚡", "10 Seconds", "Analysis"],
-              ["🎯", "Proven", "ATS Accuracy"],
-              ["🔧", "Actionable", "Fixes"],
-            ].map(([icon, top, bot]) => (
-              <div key={top} style={{ textAlign: "center" }}>
-                <p style={{ fontSize: "1.1rem", marginBottom: 2 }}>
-                  {icon}{" "}
-                  <span style={{ fontWeight: 700 }}>{top}</span>
+              ["⚡", "~15s", "Analysis time"],
+              ["🎯", "6 ATS", "Systems covered"],
+              ["🔧", "8+", "Fix categories"],
+            ].map(([icon, val, lbl]) => (
+              <div key={lbl} style={{ textAlign: "center" }}>
+                <p style={{ fontWeight: 800, fontSize: "1rem" }}>
+                  {icon} {val}
                 </p>
-                <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>{bot}</p>
+                <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginTop: 2 }}>{lbl}</p>
               </div>
             ))}
           </div>
 
-          {/* Upload or Results */}
-          {result ? (
-            <Results result={result} onReset={() => setResult(null)} />
-          ) : (
-            <UploadSection onResult={setResult} />
-          )}
+          {/* Upload card */}
+          <div
+            className="glass"
+            style={{ padding: "2rem", textAlign: "left", marginBottom: "2rem" }}
+          >
+            <UploadSection onResult={handleResult} onToast={showToast} />
+          </div>
         </div>
       </div>
 
-      {/* Feature cards — always visible */}
+      {/* ── Results ── */}
+      {result && (
+        <div
+          ref={resultsRef}
+          style={{
+            maxWidth: 900,
+            margin: "0 auto",
+            padding: "0 1.5rem 4rem",
+          }}
+        >
+          <Results result={result} onReset={handleReset} onToast={showToast} />
+        </div>
+      )}
+
+      {/* ── How it works ── */}
       {!result && (
-        <div style={{ maxWidth: 900, margin: "0 auto", padding: "2rem 1.5rem 4rem" }}>
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 1.5rem 5rem" }}>
           <p
             style={{
               textAlign: "center",
-              fontSize: "0.75rem",
-              fontWeight: 700,
-              letterSpacing: "0.12em",
+              fontSize: "0.68rem",
+              fontWeight: 800,
+              letterSpacing: "0.14em",
               textTransform: "uppercase",
               color: "var(--muted)",
+              marginBottom: "0.75rem",
+            }}
+          >
+            How it works
+          </p>
+          <h2
+            style={{
+              textAlign: "center",
+              fontWeight: 800,
+              fontSize: "clamp(1.4rem, 3vw, 2rem)",
+              letterSpacing: "-0.03em",
               marginBottom: "2rem",
+            }}
+          >
+            4 steps to a better resume
+          </h2>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gap: "1rem",
+              marginBottom: "4rem",
+            }}
+          >
+            {HOW_IT_WORKS.map((s) => (
+              <div key={s.n} className="step-card">
+                <div className="step-num">{s.n}</div>
+                <p style={{ fontWeight: 700, marginBottom: "0.4rem", fontSize: "0.9rem" }}>
+                  {s.title}
+                </p>
+                <p style={{ fontSize: "0.8rem", color: "var(--muted)", lineHeight: 1.6 }}>
+                  {s.desc}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <p
+            style={{
+              textAlign: "center",
+              fontSize: "0.68rem",
+              fontWeight: 800,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: "var(--muted)",
+              marginBottom: "0.75rem",
             }}
           >
             What you get
           </p>
+          <h2
+            style={{
+              textAlign: "center",
+              fontWeight: 800,
+              fontSize: "clamp(1.4rem, 3vw, 2rem)",
+              letterSpacing: "-0.03em",
+              marginBottom: "2rem",
+            }}
+          >
+            Everything you need to get hired
+          </h2>
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
               gap: "1rem",
             }}
           >
             {FEATURES.map((f) => (
-              <div key={f.title} className="feature-card">
+              <div key={f.title} className="feature-card glass-hover">
                 <div style={{ fontSize: "1.75rem", marginBottom: "0.75rem" }}>{f.icon}</div>
-                <p style={{ fontWeight: 700, marginBottom: "0.5rem", fontSize: "0.95rem" }}>
+                <p style={{ fontWeight: 700, marginBottom: "0.45rem", fontSize: "0.92rem" }}>
                   {f.title}
                 </p>
-                <p style={{ fontSize: "0.83rem", color: "var(--muted)", lineHeight: 1.6 }}>
+                <p style={{ fontSize: "0.81rem", color: "var(--muted)", lineHeight: 1.6 }}>
                   {f.desc}
                 </p>
               </div>
@@ -866,13 +1433,13 @@ export default function Home() {
         </div>
       )}
 
-      {/* Footer */}
+      {/* ── Footer ── */}
       <footer
         style={{
           borderTop: "1px solid var(--border)",
           padding: "1.5rem",
           textAlign: "center",
-          fontSize: "0.82rem",
+          fontSize: "0.8rem",
           color: "var(--muted)",
         }}
       >
@@ -885,8 +1452,27 @@ export default function Home() {
         >
           S. Thrishanth Reddy
         </a>{" "}
-        · Powered by Google Gemini AI
+        · Powered by{" "}
+        <span style={{ color: "var(--text2)" }}>Google Gemini AI</span>
+        {" · "}
+        <a
+          href="https://github.com/Thrishanth28/ai-resume-analyzer"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "var(--text2)", textDecoration: "none" }}
+        >
+          Open Source
+        </a>
       </footer>
+
+      {/* ── Toast ── */}
+      {toast && (
+        <Toast
+          message={toast.msg}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }
