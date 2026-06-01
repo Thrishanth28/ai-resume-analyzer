@@ -16,6 +16,19 @@ interface CriticalIssue {
   fix: string;
 }
 
+interface ScoreImprovementAction {
+  action: string;
+  detail: string;
+  score_boost: string;
+  priority: "High" | "Medium" | "Low";
+}
+
+interface ProfessionalSuggestion {
+  category: string;
+  suggestion: string;
+  why: string;
+}
+
 interface AnalysisResult {
   ats_score: number;
   grade: string;
@@ -29,6 +42,9 @@ interface AnalysisResult {
   improved_summary: string;
   verdict: string;
   interview_tips: string[];
+  score_improvement_plan: ScoreImprovementAction[];
+  professional_suggestions: ProfessionalSuggestion[];
+  next_grade_roadmap: string;
   salary_insight: string;
   word_count: number;
   processing_time_ms: number;
@@ -667,8 +683,18 @@ function UploadSection({
 
 // ── Results ───────────────────────────────────────────────────────────────────
 
-const TABS = ["Overview", "Issues", "Keywords", "AI Fixes"] as const;
+const TABS = ["Overview", "Issues", "Keywords", "AI Fixes", "Career Tips"] as const;
 type Tab = (typeof TABS)[number];
+
+const SUGGESTION_ICONS: Record<string, string> = {
+  "Resume Format": "📐",
+  "Content Quality": "✍️",
+  "Career Positioning": "🎯",
+  "Skills Gap": "🔧",
+  "Personal Branding": "🌟",
+  "Networking": "🤝",
+  "Certifications": "🏅",
+};
 
 function Results({
   result,
@@ -811,28 +837,6 @@ function Results({
         </div>
       </div>
 
-      {/* ── Salary insight ── */}
-      {result.salary_insight && (
-        <div
-          className="fade-up delay-1"
-          style={{
-            padding: "0.8rem 1.25rem",
-            borderRadius: 12,
-            background: "rgba(99,102,241,0.06)",
-            border: "1px solid rgba(99,102,241,0.18)",
-            marginBottom: "1.25rem",
-            display: "flex",
-            gap: "0.6rem",
-            alignItems: "center",
-            fontSize: "0.85rem",
-            color: "var(--text2)",
-          }}
-        >
-          <span>💰</span>
-          <span>{result.salary_insight}</span>
-        </div>
-      )}
-
       {/* ── Tabs ── */}
       <div
         className="fade-up delay-2"
@@ -932,30 +936,36 @@ function Results({
             </div>
           </div>
 
-          {/* Interview tips */}
-          {result.interview_tips && result.interview_tips.length > 0 && (
-            <div className="glass fade-up delay-4" style={{ padding: "1.5rem" }}>
-              <p className="label" style={{ marginBottom: "1rem" }}>Interview Tips</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-                {result.interview_tips.map((tip, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      gap: "0.65rem",
-                      padding: "0.75rem",
-                      borderRadius: 10,
-                      background: "rgba(59,130,246,0.05)",
-                      border: "1px solid rgba(59,130,246,0.15)",
-                    }}
-                  >
-                    <span style={{ color: "var(--blue)", flexShrink: 0 }}>💡</span>
-                    <span style={{ fontSize: "0.85rem", color: "var(--text2)", lineHeight: 1.5 }}>{tip}</span>
-                  </div>
-                ))}
-              </div>
+          {/* Nudge to Career Tips tab */}
+          <div
+            className="fade-up delay-4"
+            style={{
+              padding: "0.9rem 1.25rem",
+              borderRadius: 12,
+              background: "rgba(99,102,241,0.06)",
+              border: "1px solid rgba(99,102,241,0.2)",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem",
+            }}
+          >
+            <span style={{ fontSize: "1.3rem" }}>💡</span>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)", marginBottom: 2 }}>
+                See your personalised Career Tips
+              </p>
+              <p style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
+                Interview questions, score improvement plan & professional suggestions
+              </p>
             </div>
-          )}
+            <button
+              className="btn-ghost"
+              style={{ fontSize: "0.8rem", padding: "0.4rem 0.9rem", flexShrink: 0 }}
+              onClick={() => setTab("Career Tips")}
+            >
+              View →
+            </button>
+          </div>
         </div>
       )}
 
@@ -1114,6 +1124,233 @@ function Results({
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── TAB: Career Tips ── */}
+      {tab === "Career Tips" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+
+          {/* Next grade roadmap */}
+          {result.next_grade_roadmap && (
+            <div
+              className="glass fade-up"
+              style={{
+                padding: "1.5rem",
+                background: "rgba(99,102,241,0.06)",
+                borderColor: "rgba(99,102,241,0.25)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.85rem" }}>
+                <span style={{ fontSize: "1.3rem" }}>🚀</span>
+                <p className="label" style={{ marginBottom: 0 }}>
+                  How to Reach the Next Grade
+                </p>
+              </div>
+              <p style={{ fontSize: "0.9rem", color: "var(--text2)", lineHeight: 1.75 }}>
+                {result.next_grade_roadmap}
+              </p>
+            </div>
+          )}
+
+          {/* Score improvement plan */}
+          {result.score_improvement_plan && result.score_improvement_plan.length > 0 && (
+            <div className="glass fade-up delay-1" style={{ padding: "1.5rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "1rem" }}>
+                <span style={{ fontSize: "1.2rem" }}>📈</span>
+                <p className="label" style={{ marginBottom: 0 }}>Score Improvement Plan</p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                {result.score_improvement_plan.map((item, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: "1rem 1.25rem",
+                      borderRadius: 12,
+                      background: "rgba(255,255,255,0.02)",
+                      border: "1px solid var(--border2)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.45rem", flexWrap: "wrap" }}>
+                      <span
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 6,
+                          background: "rgba(99,102,241,0.12)",
+                          border: "1px solid rgba(99,102,241,0.25)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "0.7rem",
+                          fontWeight: 800,
+                          color: "#a5b4fc",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {i + 1}
+                      </span>
+                      <span style={{ fontWeight: 700, fontSize: "0.92rem", flex: 1 }}>{item.action}</span>
+                      <span
+                        style={{
+                          background: "rgba(34,197,94,0.1)",
+                          border: "1px solid rgba(34,197,94,0.2)",
+                          color: "#4ade80",
+                          borderRadius: 999,
+                          padding: "0.15rem 0.6rem",
+                          fontSize: "0.72rem",
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.score_boost}
+                      </span>
+                      <ImpactBadge impact={item.priority as "High" | "Medium" | "Low"} />
+                    </div>
+                    <p style={{ fontSize: "0.84rem", color: "var(--text2)", lineHeight: 1.55, paddingLeft: "2rem" }}>
+                      {item.detail}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Interview tips */}
+          {result.interview_tips && result.interview_tips.length > 0 && (
+            <div className="glass fade-up delay-2" style={{ padding: "1.5rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "1rem" }}>
+                <span style={{ fontSize: "1.2rem" }}>🎤</span>
+                <div>
+                  <p className="label" style={{ marginBottom: 0 }}>Interview Preparation</p>
+                  <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginTop: 2 }}>
+                    Questions and tips tailored to your resume
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+                {result.interview_tips.map((tip, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      gap: "0.75rem",
+                      padding: "0.85rem 1rem",
+                      borderRadius: 10,
+                      background: "rgba(59,130,246,0.05)",
+                      border: "1px solid rgba(59,130,246,0.15)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 6,
+                        background: "rgba(59,130,246,0.12)",
+                        border: "1px solid rgba(59,130,246,0.25)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "0.68rem",
+                        fontWeight: 800,
+                        color: "#93c5fd",
+                        flexShrink: 0,
+                        marginTop: 1,
+                      }}
+                    >
+                      Q
+                    </span>
+                    <span style={{ fontSize: "0.875rem", color: "var(--text2)", lineHeight: 1.6 }}>
+                      {tip}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Professional suggestions */}
+          {result.professional_suggestions && result.professional_suggestions.length > 0 && (
+            <div className="glass fade-up delay-3" style={{ padding: "1.5rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "1rem" }}>
+                <span style={{ fontSize: "1.2rem" }}>💼</span>
+                <div>
+                  <p className="label" style={{ marginBottom: 0 }}>Professional Development</p>
+                  <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginTop: 2 }}>
+                    Tailored career advice based on your profile
+                  </p>
+                </div>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                  gap: "0.75rem",
+                }}
+              >
+                {result.professional_suggestions.map((s, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: "1rem 1.125rem",
+                      borderRadius: 12,
+                      background: "rgba(168,85,247,0.04)",
+                      border: "1px solid rgba(168,85,247,0.15)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                      <span style={{ fontSize: "1.1rem" }}>
+                        {SUGGESTION_ICONS[s.category] ?? "💡"}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "0.68rem",
+                          fontWeight: 800,
+                          letterSpacing: "0.1em",
+                          textTransform: "uppercase",
+                          color: "#d8b4fe",
+                        }}
+                      >
+                        {s.category}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: "0.855rem", fontWeight: 600, color: "var(--text)", marginBottom: "0.4rem", lineHeight: 1.4 }}>
+                      {s.suggestion}
+                    </p>
+                    <p style={{ fontSize: "0.78rem", color: "var(--muted)", lineHeight: 1.55 }}>
+                      {s.why}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Salary insight */}
+          {result.salary_insight && (
+            <div
+              style={{
+                padding: "1rem 1.25rem",
+                borderRadius: 12,
+                background: "rgba(99,102,241,0.06)",
+                border: "1px solid rgba(99,102,241,0.18)",
+                display: "flex",
+                gap: "0.6rem",
+                alignItems: "flex-start",
+              }}
+            >
+              <span style={{ fontSize: "1.2rem", flexShrink: 0 }}>💰</span>
+              <div>
+                <p style={{ fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>
+                  Salary Insight
+                </p>
+                <p style={{ fontSize: "0.875rem", color: "var(--text2)", lineHeight: 1.6 }}>
+                  {result.salary_insight}
+                </p>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 

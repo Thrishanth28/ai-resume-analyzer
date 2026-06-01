@@ -89,11 +89,29 @@ Analyze the resume text below and return ONLY a valid JSON object — no markdow
   "improved_summary": "<professionally rewritten 3-4 sentence summary that is ATS-optimized, quantified, and compelling for the target role>",
   "verdict": "<one of: Highly Recommended|Recommended|Needs Improvement|Major Revision Required>",
   "interview_tips": [
-    "<specific interview tip based on their background>",
-    "<tip 2>",
-    "<tip 3>"
+    "<specific behavioral interview question the candidate should prepare for, based on their actual experience>",
+    "<specific technical or situational question relevant to their background>",
+    "<tip on how to frame their experience using STAR method for this specific profile>",
+    "<question about a gap or weakness in their resume they should prepare to answer>",
+    "<question about their biggest achievement or impact>"
   ],
-  "salary_insight": "<one sentence salary range insight for this profile based on their experience level>"
+  "score_improvement_plan": [
+    {{
+      "action": "<specific action title>",
+      "detail": "<exactly what to do, referencing details from their actual resume>",
+      "score_boost": "<estimated score points gained e.g. +5 to +8 points>",
+      "priority": "<High|Medium|Low>"
+    }}
+  ],
+  "professional_suggestions": [
+    {{
+      "category": "<one of: Resume Format|Content Quality|Career Positioning|Skills Gap|Personal Branding|Networking|Certifications>",
+      "suggestion": "<specific professional suggestion tailored to this person's background>",
+      "why": "<why this matters for their career progression>"
+    }}
+  ],
+  "next_grade_roadmap": "<2-3 sentences describing exactly what this candidate needs to do to reach the next letter grade, referencing their specific resume>",
+  "salary_insight": "<one sentence salary range insight for this profile based on their experience level and location if mentioned>"
 }}
 
 Resume text to analyze:
@@ -125,6 +143,19 @@ class CriticalIssue(BaseModel):
     fix: str
 
 
+class ScoreImprovementAction(BaseModel):
+    action: str
+    detail: str
+    score_boost: str
+    priority: str
+
+
+class ProfessionalSuggestion(BaseModel):
+    category: str
+    suggestion: str
+    why: str
+
+
 class AnalysisResult(BaseModel):
     ats_score: int
     grade: str
@@ -138,6 +169,9 @@ class AnalysisResult(BaseModel):
     improved_summary: str
     verdict: str
     interview_tips: list[str]
+    score_improvement_plan: list[ScoreImprovementAction]
+    professional_suggestions: list[ProfessionalSuggestion]
+    next_grade_roadmap: str
     salary_insight: str
     word_count: int
     processing_time_ms: int
@@ -166,8 +200,21 @@ def get_fallback_analysis(
         "quick_wins": ["Configure Gemini API key", "Add a professional summary section", "Quantify achievements with numbers"],
         "improved_summary": "Results-driven professional with demonstrated expertise in their field. Proven track record of delivering measurable outcomes and collaborating across teams. Seeking to leverage skills in a high-impact role.",
         "verdict": "Needs Improvement",
-        "interview_tips": ["Prepare STAR-format stories for behavioral questions", "Research the company's recent news before interviews"],
-        "salary_insight": "Enable real analysis to get salary insights tailored to your experience.",
+        "interview_tips": [
+            "Tell me about yourself — prepare a 90-second pitch covering your background, key wins, and why you want this role.",
+            "Describe a challenge you overcame — use the STAR method (Situation, Task, Action, Result).",
+            "Research the company thoroughly before your interview.",
+        ],
+        "score_improvement_plan": [
+            {"action": "Add quantified achievements", "detail": "Replace vague bullets with metrics (e.g. 'increased sales by 30%')", "score_boost": "+8 to +12 points", "priority": "High"},
+            {"action": "Add professional summary", "detail": "Write a 3-sentence ATS-optimized summary at the top", "score_boost": "+5 to +8 points", "priority": "High"},
+        ],
+        "professional_suggestions": [
+            {"category": "Resume Format", "suggestion": "Use a single-column ATS-friendly layout with standard section headers.", "why": "Multi-column layouts confuse ATS parsers and cause auto-rejection."},
+            {"category": "Personal Branding", "suggestion": "Add a LinkedIn URL and ensure it matches your resume.", "why": "Recruiters verify candidates on LinkedIn before reaching out."},
+        ],
+        "next_grade_roadmap": "To reach the next grade, quantify your achievements, add a strong professional summary, and incorporate industry-specific keywords relevant to your target role.",
+        "salary_insight": "Enable real Gemini analysis to get salary insights tailored to your experience.",
         "word_count": word_count,
         "processing_time_ms": processing_time_ms,
         "filename": filename,
@@ -286,6 +333,9 @@ async def analyze(
 
     processing_time_ms = int((time.time() - start_time) * 1000)
     analysis.setdefault("interview_tips", [])
+    analysis.setdefault("score_improvement_plan", [])
+    analysis.setdefault("professional_suggestions", [])
+    analysis.setdefault("next_grade_roadmap", "")
     analysis.setdefault("salary_insight", "")
     analysis["word_count"] = word_count
     analysis["processing_time_ms"] = processing_time_ms
