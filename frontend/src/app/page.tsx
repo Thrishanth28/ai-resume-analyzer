@@ -57,6 +57,11 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Unique fingerprint for a file — name + size + lastModified
+function fileFingerprint(f: File): string {
+  return `${f.name}__${f.size}__${f.lastModified}`;
+}
+
 // Returns real hex so it can be used in JS template literals like `${c}33`
 function scoreColor(score: number) {
   if (score >= 80) return "#22c55e";
@@ -447,11 +452,13 @@ function UploadSection({
   onToast,
   onAnalysisStart,
   onAnalysisError,
+  cache,
 }: {
   onResult: (r: AnalysisResult) => void;
   onToast: (msg: string, type: "success" | "error" | "info") => void;
   onAnalysisStart: () => void;
   onAnalysisError: () => void;
+  cache: React.MutableRefObject<Map<string, AnalysisResult>>;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [jobTitle, setJobTitle] = useState("");
@@ -505,6 +512,16 @@ function UploadSection({
 
   const analyze = async () => {
     if (!file) return;
+
+    // Check cache first — same file + same job title = instant result, no API call
+    const cacheKey = `${fileFingerprint(file)}__${jobTitle.trim()}`;
+    const cached = cache.current.get(cacheKey);
+    if (cached) {
+      onResult(cached);
+      onToast(`Loaded from cache — ATS Score: ${cached.ats_score}/100`, "info");
+      return;
+    }
+
     setAnalyzing(true);
     setError("");
     onAnalysisStart(); // clears old result immediately in parent
@@ -516,7 +533,7 @@ function UploadSection({
       const res = await fetch(`${API_URL}/analyze`, {
         method: "POST",
         body: form,
-        cache: "no-store", // never use cached response
+        cache: "no-store",
       });
 
       if (!res.ok) {
@@ -525,6 +542,7 @@ function UploadSection({
       }
 
       const result = (await res.json()) as AnalysisResult;
+      cache.current.set(cacheKey, result); // store for instant re-use
       onResult(result);
       onToast(`Analysis complete! ATS Score: ${result.ats_score}/100`, "success");
     } catch (err: unknown) {
@@ -536,7 +554,7 @@ function UploadSection({
           : "An unexpected error occurred.";
       setError(msg);
       onToast(msg, "error");
-      onAnalysisError(); // restore parent state
+      onAnalysisError();
     } finally {
       setAnalyzing(false);
     }
@@ -1407,6 +1425,8 @@ export default function Home() {
     msg: string;
     type: "success" | "error" | "info";
   } | null>(null);
+  // Cache: fingerprint → result, so same file + same job title never re-hits the API
+  const cacheRef = useRef<Map<string, AnalysisResult>>(new Map());
   const resultsRef = useRef<HTMLDivElement>(null);
 
   const showToast = useCallback(
@@ -1586,6 +1606,7 @@ export default function Home() {
               onToast={showToast}
               onAnalysisStart={handleAnalysisStart}
               onAnalysisError={handleError}
+              cache={cacheRef}
             />
           </div>
         </div>

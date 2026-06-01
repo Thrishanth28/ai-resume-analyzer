@@ -35,10 +35,19 @@ def build_prompt(resume_text: str, job_title: str) -> str:
 
 {role_context}
 
-Analyze the resume text below and return ONLY a valid JSON object — no markdown, no code fences, no explanations. The JSON must follow this EXACT schema:
+Analyze the resume text below and return ONLY a valid JSON object — no markdown, no code fences, no explanations. The JSON must follow this EXACT schema.
+
+SCORING RULES — apply these consistently for every resume:
+- ats_score = sum of all 5 category_scores (each out of 20, total out of 100)
+- keywords (0-20): 0-4 = almost no relevant keywords; 5-9 = some; 10-14 = good coverage; 15-17 = strong; 18-20 = exceptional
+- formatting (0-20): deduct 5 for tables/columns, 3 for missing contact, 3 for no clear section headers, 2 for graphics/images
+- experience (0-20): 0-4 = no experience; 5-9 = listed but not quantified; 10-14 = some metrics; 15-17 = well quantified; 18-20 = exceptional impact with numbers
+- skills (0-20): score based on relevance and completeness of listed skills for the role
+- education (0-20): 0-4 = none listed; 5-10 = listed without detail; 11-15 = degree + field; 16-20 = relevant degree + certifications
+- grade: A+(90-100), A(80-89), B+(70-79), B(60-69), C+(50-59), C(40-49), D(30-39), F(0-29)
 
 {{
-  "ats_score": <integer 0-100 based on ATS compatibility, keyword density, formatting, and completeness>,
+  "ats_score": <integer — MUST equal the exact sum of all five category_scores>,
   "grade": "<one of: A+|A|B+|B|C+|C|D|F>",
   "summary": "<2-3 sentence honest overall assessment of ATS readiness>",
   "sections_found": {{
@@ -240,8 +249,8 @@ async def call_gemini(resume_text: str, job_title: str) -> dict[str, Any]:
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": 1,          # required for gemini-2.5-flash thinking
-            "maxOutputTokens": 8192,   # enough room for thinking + JSON output
+            "temperature": 0,          # deterministic — same resume = same score
+            "maxOutputTokens": 8192,
         },
     }
     async with httpx.AsyncClient(timeout=120.0) as client:
