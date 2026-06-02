@@ -492,17 +492,17 @@ function UploadSection({
     [validateAndSet]
   );
 
-  const onDragOver = (e: React.DragEvent) => {
+  const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragActive(true);
-  };
+  }, []);
 
-  // Fix: check relatedTarget to avoid flicker when hovering child elements
-  const onDragLeave = (e: React.DragEvent) => {
+  // Memoized; relatedTarget check prevents flicker on child hover
+  const onDragLeave = useCallback((e: React.DragEvent) => {
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
       setDragActive(false);
     }
-  };
+  }, []);
 
   const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -517,6 +517,7 @@ function UploadSection({
     const cacheKey = `${fileFingerprint(file)}__${jobTitle.trim()}`;
     const cached = cache.current.get(cacheKey);
     if (cached) {
+      onAnalysisStart(); // clear old result before showing cached one
       onResult(cached);
       onToast(`Loaded from cache — ATS Score: ${cached.ats_score}/100`, "info");
       return;
@@ -560,10 +561,11 @@ function UploadSection({
     }
   };
 
-  if (analyzing) return <LoadingOverlay />;
+  // Note: LoadingOverlay is rendered by the parent (Home), not here.
+  // This avoids two simultaneous overlays.
 
   return (
-    <div style={{ maxWidth: 600, margin: "0 auto", width: "100%" }}>
+    <div style={{ maxWidth: 600, margin: "0 auto", width: "100%", opacity: analyzing ? 0.4 : 1, pointerEvents: analyzing ? "none" : undefined, transition: "opacity 0.2s" }}>
       {/* Job title input */}
       <div style={{ marginBottom: "1rem" }}>
         <label
@@ -762,10 +764,8 @@ function Results({
     }
   };
 
-  const totalScore = Object.values(result.category_scores).reduce(
-    (a, b) => a + b,
-    0
-  );
+  // ats_score is authoritative (backend validates it equals category sum)
+  const totalScore = result.ats_score;
 
   return (
     <div className="fade-up" style={{ width: "100%" }}>
@@ -1002,7 +1002,7 @@ function Results({
             sortedIssues.map((issue, i) => (
               <div
                 key={i}
-                className={`glass fade-up delay-${Math.min(i + 1, 6) as 1}`}
+                className={`glass fade-up delay-${Math.min(i + 1, 6)}`}
                 style={{ padding: "1.25rem 1.5rem" }}
               >
                 <div
@@ -1420,6 +1420,8 @@ export default function Home() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   // resultKey forces Results + ScoreCircle to fully remount on every new analysis
   const [resultKey, setResultKey] = useState(0);
+  // uploadKey remounts UploadSection to clear file/jobTitle state on reset
+  const [uploadKey, setUploadKey] = useState(0);
   const [analyzing, setAnalyzing] = useState(false);
   const [toast, setToast] = useState<{
     msg: string;
@@ -1458,6 +1460,8 @@ export default function Home() {
   const handleReset = useCallback(() => {
     setResult(null);
     setResultKey((k) => k + 1);
+    // uploadKey remounts UploadSection, clearing file + jobTitle state
+    setUploadKey((k) => k + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
@@ -1602,6 +1606,7 @@ export default function Home() {
             style={{ padding: "2rem", textAlign: "left", marginBottom: "2rem" }}
           >
             <UploadSection
+              key={uploadKey}
               onResult={handleResult}
               onToast={showToast}
               onAnalysisStart={handleAnalysisStart}
